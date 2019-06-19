@@ -138,6 +138,28 @@ private:
   leveldb::WriteBatch* batch;
 };
 
+class MapWorker : public AsyncWorker {
+public:
+  MapWorker (
+    Database *database,
+    Nan::Callback *callback,
+    leveldb::Slice *keys,
+    unsigned keys_length,
+    bool asBuffer,
+    bool fillCache
+  );
+
+  virtual ~MapWorker ();
+  virtual void Execute ();
+  virtual void HandleOKCallback ();
+private:
+  leveldb::Slice *keys;
+  std::string *values;
+  unsigned keys_length;
+  bool asBuffer;
+  bool fillCache;
+};
+
 class ApproximateSizeWorker : public AsyncWorker {
 public:
   ApproximateSizeWorker (

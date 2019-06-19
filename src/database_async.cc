@@ -221,6 +221,71 @@ void BatchWorker::Execute () {
   SetStatus(database->WriteBatchToDatabase(options, batch));
 }
 
+/** MAP WORKER **/
+
+MapWorker::MapWorker (
+  Database *database,
+  Nan::Callback *callback,
+  leveldb::Slice *keys,
+  unsigned keys_length,
+  bool asBuffer,
+  bool fillCache
+) : AsyncWorker (database, callback, "leveldown-hyper:db.map"),
+    keys (keys),
+    values (new std::string[keys_length]),
+    keys_length (keys_length),
+    asBuffer (asBuffer),
+    fillCache (fillCache)
+{
+
+}
+
+MapWorker::~MapWorker () {
+  for (unsigned i=0; i<keys_length; i++) {
+    delete [] keys[i].data ();  // esto no falla
+  }
+  //delete keys;  // Mismatched free() / delete / delete[]
+  //delete values;  // Invalid free() / delete / delete[] / realloc()
+}
+
+void MapWorker::Execute () {
+  leveldb::ReadOptions options;
+  //options.as_buffer = asBuffer;
+  options.fill_cache = fillCache;
+  for (unsigned i=0; i<keys_length; i++) {
+    leveldb::Status status = database->GetFromDatabase (&options, keys[i], values[i]);
+    if (status.ok ()) {
+      // values[i] = lo que sea que resolvió
+    } else
+    if (status.IsNotFound ()) {
+      values[i] = "";
+    } else {
+      SetStatus (status);
+      return;
+    }
+  }
+  SetStatus (leveldb::Status::OK ());
+}
+
+void MapWorker::HandleOKCallback () {
+  v8::Local<v8::Array> array = Nan::New<v8::Array>(keys_length);
+  for (unsigned i=0; i<keys_length; i++) {
+    if (!values[i].size ()) {
+      continue;
+    }
+    if (asBuffer) {
+      array->Set (Nan::New<v8::Integer>(static_cast<int>(i)), Nan::CopyBuffer ((char *)values[i].data(), values[i].size ()).ToLocalChecked ());
+    } else {
+      array->Set (Nan::New<v8::Integer>(static_cast<int>(i)), Nan::New<v8::String>((char *)values[i].data (), values[i].size ()).ToLocalChecked ());
+    }
+  }
+  v8::Local<v8::Value> argv[] = {
+    Nan::Null(),
+    array
+  };
+  callback->Call (2, argv, async_resource);
+}
+
 /** APPROXIMATE SIZE WORKER **/
 
 ApproximateSizeWorker::ApproximateSizeWorker (

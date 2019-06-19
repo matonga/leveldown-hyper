@@ -145,6 +145,7 @@ void Database::Init () {
   Nan::SetPrototypeMethod(tpl, "getProperty", Database::GetProperty);
   Nan::SetPrototypeMethod(tpl, "iterator", Database::Iterator);
   Nan::SetPrototypeMethod(tpl, "liveBackup", Database::LiveBackup);
+  Nan::SetPrototypeMethod(tpl, "map", Database::Map);
 }
 
 NAN_METHOD(Database::New) {
@@ -316,6 +317,54 @@ NAN_METHOD(Database::Get) {
   worker->SaveToPersistent("database", _this);
   Nan::AsyncQueueWorker(worker);
 }
+
+NAN_METHOD(Database::Map) {
+  LD_METHOD_SETUP_COMMON(map, 1, 2)
+
+  bool asBuffer = BooleanOptionValue(optionsObj, "asBuffer", true);
+  bool fillCache = BooleanOptionValue(optionsObj, "fillCache", true);
+
+  v8::Local<v8::Array> array = v8::Local<v8::Array>::Cast(info[0]);
+
+  leveldb::Slice *keys = new leveldb::Slice[array->Length()];
+  for (unsigned i=0; i<array->Length(); i++) {
+    //LD_STRING_OR_BUFFER_TO_COPY (keys[i], array->Get[i], keys[i]);
+    // no va a funcionar porque algún idiota no pensó en devolver el Slice en lugar de ser parámetro de la macro :-(
+    // así que transcribo la macro aquí y cambio la última línea:
+    v8::Local<v8::Value> from = array->Get(i);
+    size_t keySz_;
+    char* keyCh_;
+    if (!from->ToObject().IsEmpty()
+        && node::Buffer::HasInstance(from->ToObject())) {
+      keySz_ = node::Buffer::Length(from->ToObject());
+      keyCh_ = new char[keySz_];
+      memcpy (keyCh_, node::Buffer::Data(from->ToObject()), keySz_);
+    } else {
+      v8::Local<v8::String> keyStr = from->ToString();
+      keySz_ = keyStr->Utf8Length();
+      keyCh_ = new char[keySz_];
+      keyStr->WriteUtf8(
+          keyCh_
+        , -1
+        , NULL, v8::String::NO_NULL_TERMINATION
+      );
+    }
+    keys[i] = leveldb::Slice (keyCh_, keySz_);
+  }
+  MapWorker* worker = new MapWorker (
+    database,
+    new Nan::Callback (callback),
+    keys,
+    array->Length(),
+    asBuffer,
+    fillCache
+  );
+  // persist to prevent accidental GC
+  v8::Local<v8::Object> _this = info.This ();
+  worker->SaveToPersistent ("database", _this);
+  Nan::AsyncQueueWorker (worker);
+}
+
 
 NAN_METHOD(Database::Delete) {
   LD_METHOD_SETUP_COMMON(del, 1, 2)

@@ -99,6 +99,7 @@ private:
   static NAN_METHOD(Write);
   static NAN_METHOD(Iterator);
   static NAN_METHOD(LiveBackup);
+  static NAN_METHOD(Map);
 };
 
 } // namespace leveldown
